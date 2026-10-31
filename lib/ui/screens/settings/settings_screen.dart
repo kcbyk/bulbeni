@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../providers/app_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../widgets/squircle_icon.dart';
 import '../storage/storage_analysis_screen.dart';
@@ -66,8 +67,8 @@ class SettingsScreen extends StatelessWidget {
         return AlertDialog(
           backgroundColor: isDark ? const Color(0xFF18181C) : Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Yerel Dizini Sil?'),
-          content: const Text('Tüm OCR ve indeks verileri kalıcı olarak silinecektir. Cihazınızdaki orijinal dosyalar etkilenmez.'),
+          title: const Text('Yerel Dizini Temizle?'),
+          content: const Text('Tüm yerel indeks ve arama geçmişi temizlenecektir. Cihazınızdaki orijinal fotoğraflar ve dosyalar kesinlikle silinmez.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -80,7 +81,7 @@ class SettingsScreen extends StatelessWidget {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Tüm indeks başarıyla temizlendi.'),
+                      content: Text('Tüm indeks ve geçmiş başarıyla temizlendi.'),
                       backgroundColor: Colors.redAccent,
                     ),
                   );
@@ -90,7 +91,7 @@ class SettingsScreen extends StatelessWidget {
                 backgroundColor: Colors.redAccent,
                 foregroundColor: Colors.white,
               ),
-              child: const Text('Sil'),
+              child: const Text('Temizle'),
             ),
           ],
         );
@@ -102,6 +103,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final settingsProvider = context.watch<SettingsProvider>();
+    final appProvider = context.watch<AppProvider>();
 
     return Scaffold(
       backgroundColor: isDark ? AppColors.darkBackground : AppColors.lightBackground,
@@ -152,14 +154,14 @@ class SettingsScreen extends StatelessWidget {
                       ? null
                       : [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           )
                         ],
                 ),
                 child: Text(
-                  'Yalnızca seçtiğin görseller indekslenir. WhatsApp veya diğer uygulama verileri taranmaz; hiçbir şey cihazından çıkmaz.',
+                  'Yalnızca izin verdiğin cihaz dosyaları yerel olarak taranır. Hiçbir veri veya görsel sunucuya yüklenmez; tüm arama ve OCR tamamen cihazında çalışır.',
                   style: TextStyle(
                     fontSize: 14.5,
                     height: 1.45,
@@ -169,39 +171,30 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 24),
 
-              // Setting 1: Dizinlemeyi duraklat
+              // Setting: Depolama İzni Durumu
               _buildSettingTile(
                 context: context,
-                icon: Icons.add,
-                title: 'Dizinlemeyi duraklat',
-                subtitle: 'Yeni dosyalar işlenmez',
-                trailing: Switch.adaptive(
-                  value: settingsProvider.pauseIndexing,
-                  activeColor: isDark ? Colors.white : Colors.black,
-                  onChanged: (val) {
-                    settingsProvider.setPauseIndexing(val);
-                  },
-                ),
+                icon: Icons.security,
+                title: 'Dosya & Medya İzni',
+                subtitle: appProvider.hasPermission
+                    ? 'Erişim izni verildi'
+                    : 'İzin verilmedi (Dokunarak izin verin)',
+                trailing: appProvider.hasPermission
+                    ? const Icon(Icons.check_circle, color: Colors.green, size: 22)
+                    : ElevatedButton(
+                        onPressed: () => appProvider.requestStoragePermissions(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.electricBlue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          elevation: 0,
+                        ),
+                        child: const Text('İzin Ver', style: TextStyle(fontSize: 12)),
+                      ),
               ),
               const SizedBox(height: 18),
 
-              // Setting 2: Yeni ekran görüntülerini ekle
-              _buildSettingTile(
-                context: context,
-                icon: Icons.refresh_rounded,
-                title: 'Yeni ekran görüntülerini ekle',
-                subtitle: 'İzin verdiğin albümlerden',
-                trailing: Switch.adaptive(
-                  value: settingsProvider.autoAddScreenshots,
-                  activeColor: isDark ? Colors.white : Colors.black,
-                  onChanged: (val) {
-                    settingsProvider.setAutoAddScreenshots(val);
-                  },
-                ),
-              ),
-              const SizedBox(height: 18),
-
-              // Setting 3: Depolama & Analysis
+              // Setting: Depolama & Analysis
               InkWell(
                 onTap: () {
                   Navigator.push(
@@ -210,51 +203,20 @@ class SettingsScreen extends StatelessWidget {
                   );
                 },
                 borderRadius: BorderRadius.circular(16),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                  child: Column(
-                    children: [
-                      _buildSettingTile(
-                        context: context,
-                        icon: Icons.download_rounded,
-                        title: 'Depolama',
-                        subtitle: 'Dizin boyutu ${settingsProvider.formattedStorage}',
-                        trailing: Icon(
-                          Icons.chevron_right,
-                          color: isDark ? const Color(0xFF6B6B72) : const Color(0xFF9CA3AF),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      // Storage mini progress bar
-                      Padding(
-                        padding: const EdgeInsets.only(left: 60.0),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(3),
-                          child: Stack(
-                            children: [
-                              Container(
-                                height: 4,
-                                width: double.infinity,
-                                color: isDark ? const Color(0xFF26262B) : const Color(0xFFE5E7EB),
-                              ),
-                              FractionallySizedBox(
-                                widthFactor: 0.22,
-                                child: Container(
-                                  height: 4,
-                                  color: isDark ? Colors.white : Colors.black,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                child: _buildSettingTile(
+                  context: context,
+                  icon: Icons.pie_chart_outline_rounded,
+                  title: 'Depolama Analizi',
+                  subtitle: 'Kategori dağılımı ve büyük dosyalar',
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    color: isDark ? const Color(0xFF6B6B72) : const Color(0xFF9CA3AF),
                   ),
                 ),
               ),
               const SizedBox(height: 18),
 
-              // Setting 4: Tema
+              // Setting: Tema
               InkWell(
                 onTap: () => _showThemeSelector(context),
                 borderRadius: BorderRadius.circular(16),
@@ -275,31 +237,39 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 18),
 
-              // Setting 5: Dizini dışa aktar
+              // Setting: Cihazı Yeniden Tara
               InkWell(
                 onTap: () async {
-                  await settingsProvider.exportIndex();
+                  await appProvider.scanDevice();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Cihaz dosyaları yeniden tarandı.'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
                 },
                 borderRadius: BorderRadius.circular(16),
                 child: _buildSettingTile(
                   context: context,
-                  icon: Icons.upload_outlined,
-                  title: 'Dizini dışa aktar',
-                  subtitle: 'JSON dosyası olarak kaydet',
-                  trailing: const SizedBox.shrink(),
+                  icon: Icons.refresh_rounded,
+                  title: 'Cihazı Yeniden Tara',
+                  subtitle: 'Yeni fotoğrafları ve belgeleri ekle',
+                  trailing: const Icon(Icons.chevron_right),
                 ),
               ),
               const SizedBox(height: 18),
 
-              // Setting 6: Yerel dizini sil
+              // Setting: Yerel dizini sil
               InkWell(
                 onTap: () => _confirmDeleteLocalIndex(context),
                 borderRadius: BorderRadius.circular(16),
                 child: _buildSettingTile(
                   context: context,
                   icon: Icons.delete_outline_rounded,
-                  title: 'Yerel dizini sil',
-                  subtitle: 'Tüm OCR verilerini kalıcı olarak siler',
+                  title: 'Yerel dizini sıfırla',
+                  subtitle: 'Tüm indeks ve arama verilerini sıfırlar',
                   trailing: const SizedBox.shrink(),
                 ),
               ),

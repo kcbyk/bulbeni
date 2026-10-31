@@ -19,8 +19,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   final List<FilterChipItem> _categoryFilters = const [
     FilterChipItem(key: 'tum', label: 'Tümü'),
-    FilterChipItem(key: 'ekran', label: 'Ekran görüntüleri'),
     FilterChipItem(key: 'fotograf', label: 'Fotoğraflar'),
+    FilterChipItem(key: 'ekran', label: 'Ekran görüntüleri'),
     FilterChipItem(key: 'pdf', label: 'PDF\'ler'),
   ];
 
@@ -56,7 +56,7 @@ class _SearchScreenState extends State<SearchScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 8),
-              // Subtitle category header
+              // Category Header
               Text(
                 'BULBENİ · AKILLI ARAMA',
                 style: TextStyle(
@@ -68,7 +68,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
               const SizedBox(height: 8),
 
-              // Big Title
+              // Title
               Text(
                 'Ne arıyorsun?',
                 style: TextStyle(
@@ -80,7 +80,63 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
               const SizedBox(height: 20),
 
-              // Search Bar Field
+              // Permission Request Banner (if permission not yet granted)
+              if (!appProvider.hasPermission)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 20),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1B1B20) : const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: AppColors.electricBlue.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.security, color: AppColors.electricBlue, size: 28),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Cihaz Dosyalarına Erişim İzni',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: isDark ? Colors.white : Colors.black,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Cihazdaki fotoğrafları ve belgeleri aramak için izin verin.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF4B5563),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      ElevatedButton(
+                        onPressed: () async {
+                          await appProvider.requestStoragePermissions();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.electricBlue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          elevation: 0,
+                        ),
+                        child: const Text('İzin Ver', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Search Input Bar
               Container(
                 decoration: BoxDecoration(
                   color: isDark ? const Color(0xFF131316) : Colors.white,
@@ -93,7 +149,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       ? null
                       : [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.04),
+                            color: Colors.black.withValues(alpha: 0.04),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           )
@@ -146,119 +202,110 @@ class _SearchScreenState extends State<SearchScreen> {
                 remainingCount: appProvider.remainingCount,
                 isIndexing: appProvider.isIndexing,
                 onTap: () {
-                  appProvider.refreshIndex();
+                  appProvider.scanDevice();
                 },
               ),
               const SizedBox(height: 32),
 
-              // "SON ARAMALAR"
-              Text(
-                'SON ARAMALAR',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.2,
-                  color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF6B7280),
-                ),
+              // "SON ARAMALAR" Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'SON ARAMALAR',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF6B7280),
+                    ),
+                  ),
+                  if (searchProvider.recentSearches.isNotEmpty)
+                    InkWell(
+                      onTap: () {
+                        searchProvider.clearSearchHistory();
+                      },
+                      child: Text(
+                        'Temizle',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF6B7280),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
 
-              // Recent Searches List
+              // Recent Searches List (Dynamic, real user searches)
               if (searchProvider.recentSearches.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0),
-                  child: Text(
-                    'Henüz arama geçmişi yok.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDark ? const Color(0xFF6B6B70) : const Color(0xFF9CA3AF),
+                  padding: const EdgeInsets.symmetric(vertical: 24.0),
+                  child: Center(
+                    child: Text(
+                      'Arama geçmişi henüz boş.\nYaptığınız aramalar burada listelenecektir.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: isDark ? const Color(0xFF6B6B70) : const Color(0xFF9CA3AF),
+                      ),
                     ),
                   ),
                 )
               else
                 ...searchProvider.recentSearches.map((item) {
-                  return InkWell(
-                    onTap: () {
-                      _searchController.text = item.query;
-                      _onSearchSubmitted(item.query);
+                  return Dismissible(
+                    key: Key('search_${item.query}'),
+                    direction: DismissDirection.endToStart,
+                    onDismissed: (_) {
+                      searchProvider.deleteRecentSearch(item.query);
                     },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 13.0, horizontal: 4.0),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.history_rounded,
-                            size: 22,
-                            color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF6B7280),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Text(
-                              item.query,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: isDark ? Colors.white : Colors.black,
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 16),
+                      color: Colors.redAccent.withValues(alpha: 0.2),
+                      child: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                    ),
+                    child: InkWell(
+                      onTap: () {
+                        _searchController.text = item.query;
+                        _onSearchSubmitted(item.query);
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 13.0, horizontal: 4.0),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.history_rounded,
+                              size: 22,
+                              color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF6B7280),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Text(
+                                item.query,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark ? Colors.white : Colors.black,
+                                ),
                               ),
                             ),
-                          ),
-                          Icon(
-                            Icons.chevron_right,
-                            size: 20,
-                            color: isDark ? const Color(0xFF55555C) : const Color(0xFFB0B0B8),
-                          ),
-                        ],
+                            Icon(
+                              Icons.chevron_right,
+                              size: 20,
+                              color: isDark ? const Color(0xFF55555C) : const Color(0xFFB0B0B8),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   );
                 }),
 
-              const SizedBox(height: 32),
-
-              // "+ Fotoğraf ekle" Button
-              Center(
-                child: SizedBox(
-                  width: double.infinity,
-                  height: 54,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final added = await appProvider.pickAndIndexImages();
-                      if (context.mounted && added.isNotEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${added.length} yeni görsel indekslendi ve metinleri çıkarıldı!'),
-                            backgroundColor: AppColors.electricBlue,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDark ? Colors.white : Colors.black,
-                      foregroundColor: isDark ? Colors.black : Colors.white,
-                      elevation: 0,
-                      shape: const StadiumBorder(),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.add, size: 22),
-                        SizedBox(width: 8),
-                        Text(
-                          'Fotoğraf ekle',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 40),
             ],
           ),
         ),

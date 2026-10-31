@@ -23,7 +23,6 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    // If running on desktop, initialize sqflite_common_ffi
     if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
@@ -44,7 +43,7 @@ class DatabaseService {
       CREATE TABLE indexed_files (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
-        path TEXT NOT NULL,
+        path TEXT NOT NULL UNIQUE,
         category TEXT NOT NULL,
         size INTEGER NOT NULL,
         ocrText TEXT,
@@ -62,143 +61,6 @@ class DatabaseService {
         timestamp TEXT NOT NULL
       )
     ''');
-
-    // Populate initial rich demo data to match the UI screenshots out of the box
-    await _seedInitialData(db);
-  }
-
-  Future<void> _seedInitialData(Database db) async {
-    final now = DateTime.now();
-
-    // Initial search history matching the screenshots
-    final initialSearches = [
-      'restoran adresi',
-      'IBAN',
-      'wifi şifresi',
-    ];
-
-    for (var query in initialSearches) {
-      await db.insert('search_history', {
-        'query': query,
-        'timestamp': now.subtract(const Duration(hours: 1)).toIso8601String(),
-      });
-    }
-
-    // Initial indexed documents and screenshots matching the screenshots exactly
-    final initialFiles = [
-      IndexedFile(
-        id: 'seed-1',
-        name: 'Restoran menüsü',
-        path: '/storage/emulated/0/Pictures/Screenshots/Screenshot_Restoran_Menusu.png',
-        category: 'ekran',
-        size: 2450000,
-        ocrText: 'Somerville Steakhouse Somerville\'de akşam restoran menüsü, şarap listesi, antrikot 420 TL, kuver 50 TL, tatlılar ve içecekler menüsü',
-        isScreenshot: true,
-        indexedAt: now.subtract(const Duration(days: 3)),
-        createdAt: now.subtract(const Duration(days: 3)),
-        thumbnailColorIndex: 0, // Red
-      ),
-      IndexedFile(
-        id: 'seed-2',
-        name: 'Restoran adresi',
-        path: '/storage/emulated/0/DCIM/Camera/IMG_Restoran_Adres.jpg',
-        category: 'fotograf',
-        size: 3820000,
-        ocrText: 'High Street 14 · Restoran rezervasyon: Cuma 20:00 masa no 7, otopark mevcut, vale hizmeti vardır',
-        isScreenshot: false,
-        indexedAt: now.subtract(const Duration(days: 5)),
-        createdAt: now.subtract(const Duration(days: 5)),
-        thumbnailColorIndex: 1, // Steel Slate
-      ),
-      IndexedFile(
-        id: 'seed-3',
-        name: 'Rezervasyon onayı',
-        path: '/storage/emulated/0/Pictures/Screenshots/Screenshot_Rezervasyon.png',
-        category: 'ekran',
-        size: 1980000,
-        ocrText: 'Masa 4 kişilik, restoran onay kodu BK-2291, saat 19:30 Kadıköy şubesi, rezervasyon teyit edildi',
-        isScreenshot: true,
-        indexedAt: now.subtract(const Duration(days: 7)),
-        createdAt: now.subtract(const Duration(days: 7)),
-        thumbnailColorIndex: 2, // Taupe
-      ),
-      IndexedFile(
-        id: 'seed-4',
-        name: 'Fiş',
-        path: '/storage/emulated/0/DCIM/Camera/IMG_Restoran_Fis.jpg',
-        category: 'fotograf',
-        size: 2150000,
-        ocrText: 'Restoran hesabı toplam 842,50 TL KDV dahil, Nakit ödeme, Teşekkür ederiz tekrar bekleriz',
-        isScreenshot: false,
-        indexedAt: now.subtract(const Duration(days: 14)),
-        createdAt: now.subtract(const Duration(days: 14)),
-        thumbnailColorIndex: 4, // Dark Khaki
-      ),
-      IndexedFile(
-        id: 'seed-5',
-        name: 'Ev İnterneti Wifi Şifresi',
-        path: '/storage/emulated/0/Pictures/Screenshots/Screenshot_Wifi.png',
-        category: 'ekran',
-        size: 1420000,
-        ocrText: 'Modem Kablonet_5G Wifi şifresi: SuperGucluSifre2026! IP: 192.168.1.1 admin arayüzü',
-        isScreenshot: true,
-        indexedAt: now.subtract(const Duration(days: 14)),
-        createdAt: now.subtract(const Duration(days: 14)),
-        thumbnailColorIndex: 3,
-      ),
-      IndexedFile(
-        id: 'seed-6',
-        name: 'Kira Sözleşmesi & IBAN',
-        path: '/storage/emulated/0/Documents/Kira_IBAN_Bilgisi.pdf',
-        category: 'pdf',
-        size: 5120000,
-        ocrText: 'Ev sahibi IBAN: TR33 0006 1005 1982 0012 3456 78 Alıcı: Ahmet Yılmaz Kira Bedeli her ayın 15\'inde ödenecektir',
-        isScreenshot: false,
-        indexedAt: now.subtract(const Duration(days: 21)),
-        createdAt: now.subtract(const Duration(days: 21)),
-        thumbnailColorIndex: 1,
-      ),
-      IndexedFile(
-        id: 'seed-7',
-        name: 'Araç Bakım Faturası',
-        path: '/storage/emulated/0/DCIM/Camera/IMG_Arac_Bakim.jpg',
-        category: 'fotograf',
-        size: 4300000,
-        ocrText: 'Yetkili Servis Periyodik bakım, motor yağı değişimi, filtreler, fren balataları kontrolü yapıldı toplam 4.800 TL',
-        isScreenshot: false,
-        indexedAt: now.subtract(const Duration(days: 30)),
-        createdAt: now.subtract(const Duration(days: 30)),
-        thumbnailColorIndex: 0,
-      ),
-      IndexedFile(
-        id: 'seed-8',
-        name: 'Pasaport ve Vize Çıktısı',
-        path: '/storage/emulated/0/Documents/Vize_Basvuru_Formu.pdf',
-        category: 'pdf',
-        size: 3200000,
-        ocrText: 'Schengen Vize Başvuru Formu, Giriş Tarihi: 15.06.2026, Çok girişli, Seyahat Sigortası eklenmiştir',
-        isScreenshot: false,
-        indexedAt: now.subtract(const Duration(days: 35)),
-        createdAt: now.subtract(const Duration(days: 35)),
-        thumbnailColorIndex: 5,
-      ),
-      IndexedFile(
-        id: 'seed-9',
-        name: 'E-Devlet İkametgah Belgesi',
-        path: '/storage/emulated/0/Documents/Ikametgah_Belgesi.pdf',
-        category: 'pdf',
-        size: 1100000,
-        ocrText: 'Türkiye Cumhuriyeti Nüfus ve Vatandaşlık İşleri Yerleşim Yeri ve Diğer Adres Belgesi Barkod No: 88492019',
-        isScreenshot: false,
-        indexedAt: now.subtract(const Duration(days: 60)),
-        createdAt: now.subtract(const Duration(days: 60)),
-        thumbnailColorIndex: 3,
-      ),
-    ];
-
-    for (var file in initialFiles) {
-      await db.insert('indexed_files', file.toMap());
-    }
   }
 
   // --- Indexed Files Operations ---
@@ -277,7 +139,7 @@ class DatabaseService {
   Future<List<SearchResult>> searchFiles({
     required String query,
     String? categoryFilter,
-    String sortBy = 'alakali', // 'alakali', 'tarih', 'boyut'
+    String sortBy = 'alakali',
   }) async {
     final files = await getAllFiles(categoryFilter: categoryFilter);
     final trimmedQuery = query.trim();
@@ -297,9 +159,10 @@ class DatabaseService {
 
     for (final file in files) {
       final nameMatches = TurkishSearchHelper.containsMatch(file.name, trimmedQuery);
-      final ocrMatches = TurkishSearchHelper.containsMatch(file.ocrText, trimmedQuery);
+      final ocrMatches = file.ocrText.isNotEmpty && TurkishSearchHelper.containsMatch(file.ocrText, trimmedQuery);
+      final pathMatches = TurkishSearchHelper.containsMatch(file.path, trimmedQuery);
 
-      if (nameMatches || ocrMatches) {
+      if (nameMatches || ocrMatches || pathMatches) {
         final score = TurkishSearchHelper.calculateRelevance(
           title: file.name,
           ocrText: file.ocrText,
@@ -409,22 +272,5 @@ class DatabaseService {
       'itemCount': list.length,
       'items': list,
     });
-  }
-
-  Future<int> importDatabaseJson(String jsonString) async {
-    try {
-      final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
-      final items = decoded['items'] as List<dynamic>;
-      int imported = 0;
-      for (var item in items) {
-        final map = item as Map<String, dynamic>;
-        await insertFile(IndexedFile.fromMap(map));
-        imported++;
-      }
-      return imported;
-    } catch (e) {
-      debugPrint('Import error: $e');
-      return 0;
-    }
   }
 }

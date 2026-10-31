@@ -1,49 +1,44 @@
-import 'dart:io';
-import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
-import '../data/models/indexed_file.dart';
 import '../data/services/database_service.dart';
-import '../data/services/ocr_service.dart';
+import '../data/services/device_scanner_service.dart';
 
 class AppProvider extends ChangeNotifier {
   int _currentTabIndex = 0;
-  bool _hasSeenOnboarding = true; // Default true or check SharedPreferences
+  bool _hasSeenOnboarding = true;
+  bool _hasPermission = false;
 
-  // Indexing State matching the screenshot card:
-  // "1.248 öğe indekslendi   %62"
-  // "Dizinleniyor · 47 dosya kaldı"
   bool _isIndexing = false;
-  int _indexedCount = 1248;
-  int _remainingCount = 47;
-  double _progress = 0.62;
-
-  final ImagePicker _imagePicker = ImagePicker();
-  final Uuid _uuid = const Uuid();
+  int _indexedCount = 0;
+  int _remainingCount = 0;
+  double _progress = 1.0;
 
   int get currentTabIndex => _currentTabIndex;
   bool get hasSeenOnboarding => _hasSeenOnboarding;
+  bool get hasPermission => _hasPermission;
   bool get isIndexing => _isIndexing;
   int get indexedCount => _indexedCount;
   int get remainingCount => _remainingCount;
   double get progress => _progress;
 
   AppProvider() {
-    _loadState();
+    _init();
   }
 
-  Future<void> _loadState() async {
+  Future<void> _init() async {
     final prefs = await SharedPreferences.getInstance();
     _hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
-    
-    // Load actual count from database
+
+    _hasPermission = await DeviceScannerService.instance.hasPermission();
+
+    // Check count in database
     final count = await DatabaseService.instance.getIndexedCount();
-    if (count > 0) {
-      _indexedCount = count;
-    }
+    _indexedCount = count;
     notifyListeners();
+
+    if (_hasPermission) {
+      await scanDevice();
+    }
   }
 
   void setTabIndex(int index) {
@@ -56,88 +51,41 @@ class AppProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('has_seen_onboarding', true);
     notifyListeners();
+
+    // Request permissions right after onboarding
+    await requestStoragePermissions();
   }
 
-  /// Lets the user add photos/screenshots, runs OCR, and adds them to index.
-  Future<List<IndexedFile>> pickAndIndexImages({bool isScreenshot = false}) async {
-    try {
-      final List<XFile> pickedFiles = await _imagePicker.pickMultiImage();
-      if (pickedFiles.isEmpty) return [];
+  Future<bool> requestStoragePermissions() async {
+    final granted = await DeviceScannerService.instance.requestPermissions();
+    _hasPermission = granted;
+    notifyListeners();
 
-      _isIndexing = true;
-      _remainingCount = pickedFiles.length;
-      _progress = 0.1;
-      notifyListeners();
-
-      final List<IndexedFile> newIndexedFiles = [];
-      final random = Random();
-
-      for (int i = 0; i < pickedFiles.length; i++) {
-        final xfile = pickedFiles[i];
-        final file = File(xfile.path);
-        final size = await file.length();
-        final fileName = xfile.name;
-
-        // Perform on-device OCR
-        final ocrResult = await OcrService.instance.recognizeText(xfile.path);
-
-        // Detect if screenshot based on name or flag
-        final detectedScreenshot = isScreenshot ||
-            fileName.toLowerCase().contains('screenshot') ||
-            fileName.toLowerCase().contains('ekran');
-
-        final indexedFile = IndexedFile(
-          id: _uuid.v4(),
-          name: fileName,
-          path: xfile.path,
-          category: detectedScreenshot ? 'ekran' : 'fotograf',
-          size: size,
-          ocrText: ocrResult,
-          isScreenshot: detectedScreenshot,
-          indexedAt: DateTime.now(),
-          createdAt: DateTime.now(),
-          thumbnailColorIndex: random.nextInt(6),
-        );
-
-        await DatabaseService.instance.insertFile(indexedFile);
-        newIndexedFiles.add(indexedFile);
-
-        _indexedCount++;
-        _remainingCount = pickedFiles.length - (i + 1);
-        _progress = (i + 1) / pickedFiles.length;
-        notifyListeners();
-      }
-
-      _isIndexing = false;
-      notifyListeners();
-      return newIndexedFiles;
-    } catch (e) {
-      debugPrint('Error picking or indexing images: $e');
-      _isIndexing = false;
-      notifyListeners();
-      return [];
+    if (granted) {
+      await scanDevice();
     }
+    return granted;
   }
 
-  /// Simulates / runs full re-index
-  Future<void> refreshIndex() async {
+  Future<void> scanDevice() async {
     _isIndexing = true;
-    _remainingCount = 12;
-    _progress = 0.2;
+    _progress = 0.1;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 600));
-    _progress = 0.55;
-    _remainingCount = 6;
-    notifyListeners();
+    await DeviceScannerService.instance.scanDeviceFiles(
+      onProgress: (current, total) {
+        _indexedCount = current;
+        _remainingCount = (total - current).clamp(0, total);
+        _progress = (current / total).clamp(0.0, 1.0);
+        notifyListeners();
+      },
+    );
 
-    await Future.delayed(const Duration(milliseconds: 600));
+    final finalCount = await DatabaseService.instance.getIndexedCount();
+    _indexedCount = finalCount;
+    _isIndexing = false;
     _progress = 1.0;
     _remainingCount = 0;
-    _isIndexing = false;
-
-    final count = await DatabaseService.instance.getIndexedCount();
-    _indexedCount = count;
     notifyListeners();
   }
 }

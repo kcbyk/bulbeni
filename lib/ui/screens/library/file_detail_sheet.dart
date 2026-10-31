@@ -47,29 +47,41 @@ void showFileDetailSheet(BuildContext context, IndexedFile file) {
                 ),
                 const SizedBox(height: 20),
 
-                // Preview Box
-                Container(
-                  width: double.infinity,
-                  height: 200,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: fileExists && (file.category == 'fotograf' || file.category == 'ekran')
-                      ? Image.file(
-                          File(file.path),
-                          fit: BoxFit.cover,
-                        )
-                      : Center(
-                          child: Icon(
-                            file.category == 'pdf'
-                                ? Icons.picture_as_pdf_outlined
-                                : Icons.image_outlined,
-                            size: 64,
-                            color: Colors.white.withOpacity(0.9),
+                // Preview Box - Tapping it also opens the file
+                GestureDetector(
+                  onTap: () {
+                    context.read<LibraryProvider>().openFile(file.path);
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: fileExists && (file.category == 'fotograf' || file.category == 'ekran')
+                        ? Image.file(
+                            File(file.path),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) => Center(
+                              child: Icon(
+                                Icons.broken_image_outlined,
+                                size: 54,
+                                color: Colors.white.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          )
+                        : Center(
+                            child: Icon(
+                              file.category == 'pdf'
+                                  ? Icons.picture_as_pdf_outlined
+                                  : Icons.insert_drive_file_outlined,
+                              size: 64,
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
                           ),
-                        ),
+                  ),
                 ),
                 const SizedBox(height: 20),
 
@@ -101,12 +113,12 @@ void showFileDetailSheet(BuildContext context, IndexedFile file) {
                           context.read<LibraryProvider>().openFile(file.path);
                         },
                         icon: const Icon(Icons.open_in_new, size: 18),
-                        label: const Text('Aç'),
+                        label: const Text('Dosyayı Aç'),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isDark ? Colors.white : Colors.black,
                           foregroundColor: isDark ? Colors.black : Colors.white,
                           shape: const StadiumBorder(),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                           elevation: 0,
                         ),
                       ),
@@ -151,19 +163,19 @@ void showFileDetailSheet(BuildContext context, IndexedFile file) {
                 const SizedBox(height: 24),
 
                 // OCR Text Section
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'OKUNAN METİN (OCR)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 1.2,
-                        color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF6B7280),
+                if (file.ocrText.isNotEmpty) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'OKUNAN METİN (OCR)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2,
+                          color: isDark ? const Color(0xFF8E8E93) : const Color(0xFF6B7280),
+                        ),
                       ),
-                    ),
-                    if (file.ocrText.isNotEmpty)
                       InkWell(
                         onTap: () {
                           Clipboard.setData(ClipboardData(text: file.ocrText));
@@ -189,31 +201,30 @@ void showFileDetailSheet(BuildContext context, IndexedFile file) {
                           ],
                         ),
                       ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF1A1A1E) : const Color(0xFFF9FAFB),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isDark ? const Color(0xFF28282C) : const Color(0xFFE5E7EB),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1A1A1E) : const Color(0xFFF9FAFB),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: isDark ? const Color(0xFF28282C) : const Color(0xFFE5E7EB),
+                      ),
+                    ),
+                    child: Text(
+                      file.ocrText,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.45,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
                     ),
                   ),
-                  child: Text(
-                    file.ocrText.isNotEmpty
-                        ? file.ocrText
-                        : 'Bu dosyada okunabilir metin bulunamadı.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.45,
-                      color: isDark ? Colors.white70 : Colors.black87,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
+                  const SizedBox(height: 24),
+                ],
 
                 // File Path info
                 Text(
