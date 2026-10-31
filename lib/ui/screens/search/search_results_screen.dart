@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
@@ -6,6 +7,7 @@ import '../../../providers/search_provider.dart';
 import '../../widgets/filter_chips_bar.dart';
 import '../../widgets/highlighted_text.dart';
 import '../library/file_detail_sheet.dart';
+import '../viewer/full_screen_photo_viewer.dart';
 
 class SearchResultsScreen extends StatefulWidget {
   final String initialQuery;
@@ -277,30 +279,58 @@ class _SearchResultsScreenState extends State<SearchResultsScreen> {
                             final result = results[index];
                             final file = result.file;
                             final color = AppColors.getThumbnailColor(file.thumbnailColorIndex);
+                            final isPhoto = file.category == 'fotograf' || file.category == 'ekran';
+                            final fileExists = File(file.path).existsSync();
 
                             return InkWell(
                               onTap: () {
-                                showFileDetailSheet(context, file);
+                                if (isPhoto && fileExists) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => FullScreenPhotoViewer(file: file),
+                                    ),
+                                  );
+                                } else {
+                                  showFileDetailSheet(context, file);
+                                }
                               },
                               borderRadius: BorderRadius.circular(16),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  // Squircle Thumbnail
-                                  Container(
-                                    width: 74,
-                                    height: 74,
-                                    decoration: BoxDecoration(
-                                      color: color,
-                                      borderRadius: BorderRadius.circular(22),
-                                    ),
-                                    alignment: Alignment.center,
-                                    child: Icon(
-                                      file.category == 'pdf'
-                                          ? Icons.picture_as_pdf_outlined
-                                          : Icons.image_outlined,
-                                      color: Colors.white.withOpacity(0.9),
-                                      size: 30,
+                                  // Real Thumbnail or Fallback
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(22),
+                                    child: SizedBox(
+                                      width: 74,
+                                      height: 74,
+                                      child: isPhoto && fileExists
+                                          ? Image.file(
+                                              File(file.path),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) =>
+                                                  Container(
+                                                    color: color,
+                                                    alignment: Alignment.center,
+                                                    child: Icon(
+                                                      Icons.image_outlined,
+                                                      color: Colors.white.withValues(alpha: 0.9),
+                                                      size: 30,
+                                                    ),
+                                                  ),
+                                            )
+                                          : Container(
+                                              color: color,
+                                              alignment: Alignment.center,
+                                              child: Icon(
+                                                file.category == 'pdf'
+                                                    ? Icons.picture_as_pdf_outlined
+                                                    : Icons.insert_drive_file_outlined,
+                                                color: Colors.white.withValues(alpha: 0.9),
+                                                size: 30,
+                                              ),
+                                            ),
                                     ),
                                   ),
                                   const SizedBox(width: 16),

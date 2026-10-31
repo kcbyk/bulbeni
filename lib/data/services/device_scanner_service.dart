@@ -1,6 +1,6 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 import '../models/indexed_file.dart';
@@ -15,127 +15,87 @@ class DeviceScannerService {
   bool _isScanning = false;
   bool get isScanning => _isScanning;
 
-  /// Requests appropriate permissions based on Android version
   Future<bool> requestPermissions() async {
     if (kIsWeb) return true;
+    if (!Platform.isAndroid) return true;
 
-    if (Platform.isAndroid) {
-      // Check photos/media permission (Android 13+)
-      final photosStatus = await Permission.photos.request();
-      final storageStatus = await Permission.storage.request();
+    // Android 13+ (API 33+)
+    var photosStatus = await Permission.photos.request();
+    await Permission.videos.request();
+    await Permission.audio.request();
 
-      if (photosStatus.isGranted || storageStatus.isGranted) {
-        return true;
-      }
-
-      // Check if manage external storage is needed for full file access
-      if (await Permission.manageExternalStorage.isGranted) {
-        return true;
-      }
-
-      final manageStatus = await Permission.manageExternalStorage.request();
-      return manageStatus.isGranted || photosStatus.isGranted || storageStatus.isGranted;
+    if (photosStatus.isGranted) {
+      return true;
     }
 
-    return true;
+    // Android 12 and below
+    var storageStatus = await Permission.storage.request();
+    if (storageStatus.isGranted) return true;
+
+    // Last resort: manage external storage
+    if (await Permission.manageExternalStorage.isDenied) {
+      var manageStatus = await Permission.manageExternalStorage.request();
+      if (manageStatus.isGranted) return true;
+    }
+
+    return photosStatus.isGranted || storageStatus.isGranted;
   }
 
   Future<bool> hasPermission() async {
-    if (kIsWeb) return true;
-    if (Platform.isAndroid) {
-      final photos = await Permission.photos.isGranted;
-      final storage = await Permission.storage.isGranted;
-      final manage = await Permission.manageExternalStorage.isGranted;
-      return photos || storage || manage;
-    }
-    return true;
+    if (kIsWeb || !Platform.isAndroid) return true;
+    final photos = await Permission.photos.isGranted;
+    final storage = await Permission.storage.isGranted;
+    final manage = await Permission.manageExternalStorage.isGranted;
+    return photos || storage || manage;
   }
 
-  /// Scans device storage for photos, screenshots, and PDFs
-  Future<List<IndexedFile>> scanDeviceFiles({
-    void Function(int current, int total)? onProgress,
+  /// Scans ALL device files in a background isolate to avoid ANR
+  Future<void> scanDeviceFiles({
+    void Function(int current, int total, String file)? onProgress,
+    void Function(int totalFound)? onComplete,
   }) async {
-    if (_isScanning) return [];
+    if (_isScanning) return;
     _isScanning = true;
 
-    final List<IndexedFile> discoveredFiles = [];
-
     try {
-      final List<Directory> scanDirs = [];
+      // Step 1: Collect all file paths in background isolate
+      final receivePort = ReceivePort();
+      await Isolate.spawn(_collectFilesIsolate, receivePort.sendPort);
 
-      if (Platform.isAndroid) {
-        const root = '/storage/emulated/0';
-        final paths = [
-          '$root/DCIM/Camera',
-          '$root/DCIM',
-          '$root/Pictures/Screenshots',
-          '$root/Pictures',
-          '$root/Download',
-          '$root/Documents',
-        ];
-
-        for (final p in paths) {
-          final dir = Directory(p);
-          if (dir.existsSync()) {
-            scanDirs.add(dir);
-          }
-        }
-      } else {
-        // Desktop or other platform fallback
-        final docsDir = await getApplicationDocumentsDirectory();
-        final downloadsDir = await getDownloadsDirectory();
-        final picturesDir = await getApplicationSupportDirectory();
-
-        scanDirs.add(docsDir);
-        if (downloadsDir != null && downloadsDir.existsSync()) scanDirs.add(downloadsDir);
-        if (picturesDir.existsSync()) scanDirs.add(picturesDir);
-      }
-
-      final List<File> candidates = [];
-      const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.pdf'];
-
-      for (final dir in scanDirs) {
-        try {
-          final entities = dir.listSync(recursive: false, followLinks: false);
-          for (final entity in entities) {
-            if (entity is File) {
-              final lower = entity.path.toLowerCase();
-              if (validExtensions.any((ext) => lower.endsWith(ext))) {
-                candidates.add(entity);
-              }
-            }
-          }
-        } catch (e) {
-          debugPrint('Error accessing directory ${dir.path}: $e');
+      final List<String> allPaths = [];
+      await for (final message in receivePort) {
+        if (message is List<String>) {
+          allPaths.addAll(message);
+        } else if (message == 'DONE') {
+          receivePort.close();
+          break;
         }
       }
 
-      // Sort newest first
-      candidates.sort((a, b) {
-        try {
-          return b.lastModifiedSync().compareTo(a.lastModifiedSync());
-        } catch (_) {
-          return 0;
-        }
-      });
+      final total = allPaths.length;
 
-      // Limit initial scan batch for quick responsiveness
-      final batch = candidates.take(150).toList();
-
-      for (int i = 0; i < batch.length; i++) {
-        final file = batch[i];
-        final path = file.path;
+      // Step 2: Insert into DB batch by batch (on main isolate but async)
+      int count = 0;
+      for (final path in allPaths) {
+        final file = File(path);
         final name = path.split(Platform.pathSeparator).last;
-        final lowerName = name.toLowerCase();
+        final lowerPath = path.toLowerCase();
 
         String category = 'fotograf';
         bool isScreenshot = false;
 
-        if (lowerName.endsWith('.pdf')) {
+        if (lowerPath.endsWith('.pdf')) {
           category = 'pdf';
-        } else if (lowerName.contains('screenshot') ||
-            lowerName.contains('ekran') ||
-            path.contains('Screenshots')) {
+        } else if (lowerPath.endsWith('.mp3') ||
+            lowerPath.endsWith('.m4a') ||
+            lowerPath.endsWith('.aac') ||
+            lowerPath.endsWith('.flac') ||
+            lowerPath.endsWith('.wav') ||
+            lowerPath.endsWith('.ogg')) {
+          category = 'ses';
+        } else if (lowerPath.contains('screenshot') ||
+            lowerPath.contains('ekran') ||
+            lowerPath.contains('screenshots')) {
           category = 'ekran';
           isScreenshot = true;
         }
@@ -143,8 +103,9 @@ class DeviceScannerService {
         int size = 0;
         DateTime modified = DateTime.now();
         try {
-          size = file.lengthSync();
-          modified = file.lastModifiedSync();
+          final stat = await file.stat();
+          size = stat.size;
+          modified = stat.modified;
         } catch (_) {}
 
         final indexedFile = IndexedFile(
@@ -157,38 +118,112 @@ class DeviceScannerService {
           isScreenshot: isScreenshot,
           indexedAt: DateTime.now(),
           createdAt: modified,
-          thumbnailColorIndex: i % 6,
+          thumbnailColorIndex: count % 6,
         );
 
-        discoveredFiles.add(indexedFile);
         await DatabaseService.instance.insertFile(indexedFile);
+        count++;
 
         if (onProgress != null) {
-          onProgress(i + 1, batch.length);
+          onProgress(count, total, name);
+        }
+
+        // Yield every 20 files to keep UI responsive
+        if (count % 20 == 0) {
+          await Future.delayed(Duration.zero);
         }
       }
 
-      // Trigger asynchronous background OCR on first 15 images
-      _triggerBackgroundOcr(discoveredFiles.take(15).toList());
+      if (onComplete != null) {
+        onComplete(count);
+      }
+
+      // Kick off background OCR for first 30 images only
+      _backgroundOcrFirstBatch(allPaths.take(30).toList());
 
     } catch (e) {
       debugPrint('Device scan error: $e');
     } finally {
       _isScanning = false;
     }
-
-    return discoveredFiles;
   }
 
-  void _triggerBackgroundOcr(List<IndexedFile> files) {
+  static Future<void> _collectFilesIsolate(SendPort sendPort) async {
+    const validExtensions = [
+      '.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif',
+      '.pdf',
+      '.mp3', '.m4a', '.aac', '.flac', '.wav', '.ogg',
+      '.doc', '.docx', '.xls', '.xlsx', '.txt',
+    ];
+
+    const scanRoots = [
+      '/storage/emulated/0/DCIM',
+      '/storage/emulated/0/Pictures',
+      '/storage/emulated/0/Download',
+      '/storage/emulated/0/Documents',
+      '/storage/emulated/0/Music',
+      '/storage/emulated/0/Movies',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Images',
+      '/storage/emulated/0/WhatsApp/Media/WhatsApp Documents',
+      '/storage/emulated/0/Telegram',
+    ];
+
+    final List<String> found = [];
+
+    for (final root in scanRoots) {
+      final dir = Directory(root);
+      if (!dir.existsSync()) continue;
+
+      try {
+        final entities = dir.listSync(recursive: true, followLinks: false);
+        for (final entity in entities) {
+          if (entity is! File) continue;
+          final lower = entity.path.toLowerCase();
+          if (validExtensions.any((ext) => lower.endsWith(ext))) {
+            found.add(entity.path);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Sort by path (stable, fast)
+    found.sort((a, b) {
+      // Screenshots and camera first
+      final aScore = a.contains('DCIM') || a.contains('Camera') ? 0
+          : a.contains('Screenshots') ? 1
+          : a.contains('Pictures') ? 2
+          : 3;
+      final bScore = b.contains('DCIM') || b.contains('Camera') ? 0
+          : b.contains('Screenshots') ? 1
+          : b.contains('Pictures') ? 2
+          : 3;
+      return aScore.compareTo(bScore);
+    });
+
+    // Send in chunks of 200
+    for (int i = 0; i < found.length; i += 200) {
+      final end = (i + 200).clamp(0, found.length);
+      sendPort.send(found.sublist(i, end));
+    }
+
+    sendPort.send('DONE');
+  }
+
+  void _backgroundOcrFirstBatch(List<String> paths) {
     Future.microtask(() async {
-      for (final file in files) {
-        if (file.category == 'fotograf' || file.category == 'ekran') {
+      for (final path in paths) {
+        final lower = path.toLowerCase();
+        if (lower.endsWith('.jpg') || lower.endsWith('.jpeg') ||
+            lower.endsWith('.png') || lower.endsWith('.webp')) {
           try {
-            final text = await OcrService.instance.recognizeText(file.path);
+            final text = await OcrService.instance.recognizeText(path);
             if (text.isNotEmpty) {
-              final updated = file.copyWith(ocrText: text);
-              await DatabaseService.instance.updateFile(updated);
+              final id = const Uuid().v5(Uuid.NAMESPACE_URL, path);
+              final existing = await DatabaseService.instance.getFileById(id);
+              if (existing != null) {
+                await DatabaseService.instance.updateFile(
+                    existing.copyWith(ocrText: text));
+              }
             }
           } catch (_) {}
         }

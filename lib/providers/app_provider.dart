@@ -73,11 +73,14 @@ class AppProvider extends ChangeNotifier {
     notifyListeners();
 
     await DeviceScannerService.instance.scanDeviceFiles(
-      onProgress: (current, total) {
+      onProgress: (current, total, fileName) {
         _indexedCount = current;
         _remainingCount = (total - current).clamp(0, total);
-        _progress = (current / total).clamp(0.0, 1.0);
+        _progress = total > 0 ? (current / total).clamp(0.0, 1.0) : 0.0;
         notifyListeners();
+      },
+      onComplete: (totalFound) {
+        // final count will be fetched from DB below
       },
     );
 

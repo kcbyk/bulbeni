@@ -8,6 +8,7 @@ import '../../../providers/app_provider.dart';
 import '../../../providers/library_provider.dart';
 import '../../widgets/filter_chips_bar.dart';
 import 'file_detail_sheet.dart';
+import '../viewer/full_screen_photo_viewer.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -263,8 +264,27 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
                       return InkWell(
                         onTap: () {
-                          // Tap opens the rich file detail sheet with open/share/copy
-                          showFileDetailSheet(context, file);
+                          final isPhoto = file.category == 'fotograf' || file.category == 'ekran';
+                          if (isPhoto && fileExists) {
+                            // Collect all visible image files for swipe navigation
+                            final imageFiles = files
+                                .where((f) =>
+                                    f.category == 'fotograf' || f.category == 'ekran')
+                                .toList();
+                            final galleryIndex = imageFiles.indexWhere((f) => f.id == file.id);
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => FullScreenPhotoViewer(
+                                  file: file,
+                                  gallery: imageFiles,
+                                  initialIndex: galleryIndex >= 0 ? galleryIndex : 0,
+                                ),
+                              ),
+                            );
+                          } else {
+                            showFileDetailSheet(context, file);
+                          }
                         },
                         onLongPress: () {
                           // Long press directly shares the file
